@@ -10,6 +10,26 @@
 
 clearvars; clc;
 
+% Logging / Laufzeit-Optionen
+verbose = true;                            % true = Ausgabe in Konsole und Logdatei
+logfile = fullfile(pwd,'generate_data.log');
+fid = fopen(logfile,'w');                  % Logdatei (überschreibt)
+fprintf(fid,'generate_data log started: %s\n', datestr(now));
+progress_step = 5000;                      % wie oft Fortschritt ausgegeben wird
+tic;                                       % Startzeit messen
+
+% Zähler für Logging
+cnt_total = 0;
+cnt_legal = 0;
+cnt_terminal = 0;
+cnt_moves_found = 0;
+cnt_win_green = 0;
+cnt_win_blue = 0;
+
+if verbose
+    fprintf('Logging to %s\n', logfile);
+end
+
 % Alle möglichen Bretter auflisten (3^9 Möglichkeiten)
 vals = [-1 0 1]; % -1 = blau, 0 = leer, +1 = grün
 N = 3^9;
@@ -31,6 +51,7 @@ player_to_move = zeros(N,1);
 move_idx = zeros(N,1); % 1..9 Index des empfohlenen Zugs (0 = keiner)
 
 for t = 1:N
+    cnt_total = cnt_total + 1;
     X = reshape(boards(t,:),3,3)'; % in 3x3 umwandeln (Zeilen-major wie in Cleve Moler)
 
     % Zähle Steine
@@ -45,6 +66,12 @@ for t = 1:N
     % Gewinner ermitteln nach Magic15 (0 = keiner, 1 = grün, -1 = blau, 2 = Unentschieden)
     p = winner_magic(X);
     winner_label(t) = p;
+    % Statistik: Gewinner zählen (Magic15)
+    if p == 1
+        cnt_win_green = cnt_win_green + 1;
+    elseif p == -1
+        cnt_win_blue = cnt_win_blue + 1;
+    end
 
     % Unmögliche Stellungen ausschließen, in denen beide nach Magic15 gewonnen haben
     has1 = has_magic_win(X,1);
@@ -55,6 +82,7 @@ for t = 1:N
 
     % Falls bereits jemand gewonnen hat: Stellung ist legal, aber kein Zug erwartet
     is_legal(t) = true;
+    cnt_legal = cnt_legal + 1;
 
     % Spieler am Zug bestimmen: gleiche Anzahl -> grün(+1), sonst blau(-1)
     if n1 == n_1
@@ -67,6 +95,7 @@ for t = 1:N
     % Wenn Stellung terminal ist (Gewinner oder volles Feld), Zug überspringen
     if p ~= 0 || all(X(:) ~= 0)
         move_idx(t) = 0;
+        cnt_terminal = cnt_terminal + 1;
         continue
     end
 
@@ -76,6 +105,15 @@ for t = 1:N
         move_idx(t) = 0;
     else
         move_idx(t) = sub2ind([3,3], i, j);
+        cnt_moves_found = cnt_moves_found + 1;
+    end
+
+    % periodisches Logging
+    if verbose && mod(cnt_total,progress_step) == 0
+        elapsed = toc;
+        msg = sprintf('Processed %d/%d boards (legal: %d, terminal: %d, moves_found: %d) elapsed: %.1fs', cnt_total, N, cnt_legal, cnt_terminal, cnt_moves_found, elapsed);
+        fprintf('%s\n', msg);
+        fprintf(fid, '%s\n', msg);
     end
 end
 
@@ -91,6 +129,24 @@ outfile = fullfile(pwd,'data_tictactoe.mat');
 save(outfile,'boards','winner_label','player_to_move','move_idx');
 
 fprintf('Gespeichert %d legale Stellungen in %s\n', size(boards,1), outfile);
+
+% Abschließendes Logging / Zusammenfassung
+elapsed = toc;
+summary = sprintf('\nSummary:\n  processed boards: %d\n  legal: %d\n  terminal: %d\n  moves found: %d\n  wins (green): %d\n  wins (blue): %d\n  elapsed (s): %.2f\n', cnt_total, cnt_legal, cnt_terminal, cnt_moves_found, cnt_win_green, cnt_win_blue, elapsed);
+fprintf('%s\n', summary);
+fprintf(fid, '%s\n', summary);
+
+% Save log struct
+log.cnt_total = cnt_total;
+log.cnt_legal = cnt_legal;
+log.cnt_terminal = cnt_terminal;
+log.cnt_moves_found = cnt_moves_found;
+log.cnt_win_green = cnt_win_green;
+log.cnt_win_blue = cnt_win_blue;
+log.elapsed = elapsed;
+save(fullfile(pwd,'data_tictactoe_log.mat'),'log');
+
+fclose(fid);
 
 %% --- Hilfsfunktionen ---
 function p = winner(X)
