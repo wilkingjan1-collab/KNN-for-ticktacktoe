@@ -42,14 +42,13 @@ for t = 1:N
         continue
     end
 
-    % Gewinner ermitteln (0 = keiner, 1 = grün, -1 = blau, 2 = Unentschieden)
-    p = winner(X);
+    % Gewinner ermitteln nach Magic15 (0 = keiner, 1 = grün, -1 = blau, 2 = Unentschieden)
+    p = winner_magic(X);
     winner_label(t) = p;
 
-    % Unmögliche Stellungen ausschließen, in denen beide gewonnen haben
-    % (die winner()-Funktion gibt ggf. nur den ersten Treffer zurück)
-    has1 = any(sum(X == 1) == 3) || any(sum(X' == 1) == 3) || sum(diag(X) == 1) == 3 || sum(diag(fliplr(X)) == 1) == 3;
-    has_1 = any(sum(X == -1) == 3) || any(sum(X' == -1) == 3) || sum(diag(X) == -1) == 3 || sum(diag(fliplr(X)) == -1) == 3;
+    % Unmögliche Stellungen ausschließen, in denen beide nach Magic15 gewonnen haben
+    has1 = has_magic_win(X,1);
+    has_1 = has_magic_win(X,-1);
     if has1 && has_1
         continue
     end
@@ -121,9 +120,9 @@ function [i,j] = strategy(X,p)
 % [i,j] = strategy(X,p) aus dem Cleve Moler Kapitel (naiv)
 pause(0);
 
-[i,j] = winningmove(X,p);
+[i,j] = winningmove_magic(X,p);
 if isempty(i)
-    [i,j] = winningmove(X,-p);
+    [i,j] = winningmove_magic(X,-p);
 end
 if isempty(i)
     [I,J] = find(X == 0);
@@ -182,5 +181,55 @@ elseif sum(diag(fliplr(X))) == s
 else
     i = [];
     j = [];
+end
+end
+
+function tf = has_magic_win(X,p)
+% Prüft, ob Spieler p eine Triplett von besetzten Zellen hat, deren
+% zugeordnete Lo-Shu-Zahlen auf 15 summieren.
+M = [8 1 6; 3 5 7; 4 9 2];
+nums = M(X == p);
+tf = false;
+if numel(nums) < 3
+    return
+end
+combos = nchoosek(nums,3);
+if any(sum(combos,2) == 15)
+    tf = true;
+end
+end
+
+function p = winner_magic(X)
+% winner_magic prüft Gewinn nach Magic15/Lo-Shu
+for pp = [1, -1]
+    if has_magic_win(X,pp)
+        p = pp;
+        return
+    end
+end
+if all(X(:) ~= 0)
+    p = 2;
+else
+    p = 0;
+end
+end
+
+function [i,j] = winningmove_magic(X,p)
+% winningmove_magic sucht einen Zug (i,j), der Spieler p sofort gewinnen lässt
+M = [8 1 6; 3 5 7; 4 9 2];
+nums = M(X == p);
+i = [];
+j = [];
+empties = find(X == 0);
+for k = 1:numel(empties)
+    lin = empties(k);
+    [r,c] = ind2sub([3,3], lin);
+    cand = [nums; M(r,c)];
+    if numel(cand) >= 3
+        combos = nchoosek(cand,3);
+        if any(sum(combos,2) == 15)
+            i = r; j = c; return
+        end
+    end
 end
 end
